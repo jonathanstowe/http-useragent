@@ -44,6 +44,7 @@ has @.history;
 multi _split_buf(Str $delimiter, Blob $input, $limit = Inf --> List) {
     _split_buf($delimiter.encode, $input, $limit);
 }
+
 multi _split_buf(Blob $delimiter, Blob $input, $limit = Inf --> List) {
     my @result;
     my @a            = $input.list;
@@ -71,6 +72,14 @@ method auth(Str $login, Str $password) {
     $!auth_password = $password;
 }
 
+method has-auth(--> Bool) {
+   $!auth_login.defined && $!auth_password.defined
+}
+
+method encode-auth(--> Str) {
+        "Basic " ~ MIME::Base64.encode-str("{$!auth_login}:{$!auth_password}")
+}
+
 multi method get(URI $uri is copy ) {
     my $request  = HTTP::Request.new(GET => $uri);
     self.request($request);
@@ -80,29 +89,13 @@ multi method get(Str $uri is copy ) {
     self.get(URI.new(_clear-url($uri)));
 }
 
-multi method request(HTTP::Request $request) {
+multi method request(HTTP::Request $request --> HTTP::Response) {
     my HTTP::Response $response;
 
-    # add cookies to the request
-    $.cookies.add-cookie-header($request) if $.cookies.cookies.elems;
 
-    # set the useragent
-    $request.header.field(User-Agent => $.useragent) if $.useragent.defined;
+    self.process-request($request);
 
-    # use HTTP Auth
-    $request.header.field(
-        Authorization => "Basic " ~ MIME::Base64.encode-str("{$!auth_login}:{$!auth_password}")
-    ) if $!auth_login.defined && $!auth_password.defined;
-
-    my $port = $request.uri.port;
-    my $conn;
-    if $request.uri.scheme eq 'https' {
-        die "Please install IO::Socket::SSL in order to fetch https sites" if ::('IO::Socket::SSL') ~~ Failure;
-        $conn = ::('IO::Socket::SSL').new(:host(~$request.header.field('Host').values), :port($port // 443), :timeout($.timeout))
-    }
-    else {
-        $conn = IO::Socket::INET.new(:host(~$request.header.field('Host').values), :port($port // 80), :timeout($.timeout));
-    }
+    my $conn = self.get-connection($request);
 
     if $conn.send($request.Str ~ "\r\n") {
         my $first-chunk;
@@ -115,8 +108,9 @@ multi method request(HTTP::Request $request) {
             $first-chunk = Blob[uint8].new($first-chunk.list, $t.list);
             @a           = $first-chunk.list;
 
-            # Find the header/body separator in the chunk, which means we can parse the header seperately and are
-            # able to figure out the correct encoding of the body.
+            # Find the header/body separator in the chunk, which means
+            # we can parse the header seperately and are able to figure
+            # out the correct encoding of the body.
             $msg-body-pos = @a.first-index({ @a[(state $i = -1) .. $i++ + @b] ~~ @b });
             last if $msg-body-pos;
         }
@@ -127,6 +121,7 @@ multi method request(HTTP::Request $request) {
         my ($response-line, $header) = _split_buf("\r\n", $first-chunk.subbuf(0, $msg-body-pos), 2)».decode('ascii');
         $response .= new( $response-line.split(' ')[1].Int );
         $response.header.parse( $header );
+        $response.request = $request;
 
 
         my $content = +@a <= $msg-body-pos + 2 ??
@@ -143,7 +138,8 @@ multi method request(HTTP::Request $request) {
                     $chunk-size                = :16($chunk-size.decode);
                     $content = $conn.recv(4, :bin) unless $content;
                     if $chunk-size {
-                        # Let the content grow until we have reached the desired size.
+                        # Let the content grow until we have reached
+                        # the desired size.
                         while $chunk-size > $content.bytes {
                             $content ~= $conn.recv($chunk-size - $content.bytes, :bin);
                         }
@@ -157,16 +153,18 @@ multi method request(HTTP::Request $request) {
             # We carry on as long as we receive something.
             while recv-entire-chunk($chunk) {
                 $content ~= $chunk;
-                # We only request five bytes here, and check if it is the message terminator, which is
-                # "\r\n0\r\n". When we would try to read more bytes we would block for a few seconds.
+                # We only request five bytes here, and check if it is the
+                # message terminator, which is "\r\n0\r\n". When we would
+                # try to read more bytes we would block for a few seconds.
                 $chunk    = $conn.recv(5, :bin);
                 if !$chunk || $chunk.list eqv [0x0d, 0x0a, 0x30, 0x0d, 0x0a] {
                     # Done with this message!
                     last
                 }
                 else {
-                    # Read more of this chunk, which includes the rest of a chunk-size field followed
-                    # by <CRLF> and a single byte of the message content.
+                    # Read more of this chunk, which includes the rest
+                    # of a chunk-size field followed by <CRLF> and a
+                    # single byte of the message content.
                     $chunk ~= $conn.recv(6, :bin);
                     $chunk.=subbuf(2)
                 }
@@ -193,7 +191,8 @@ multi method request(HTTP::Request $request) {
     X::HTTP::Response.new(:rc('No response')).throw unless $response;
     
     # Is there a better way to save history without saving content?
-    # Or should content be optionally cached? (useful for serving 304 Not Modified)
+    # Or should content be optionally cached? (useful for serving 304
+    # Not Modified)
     my $response-copy = $response.clone();
     $response-copy.content = $response.content.WHAT;
     @.history.push($response-copy);
@@ -205,7 +204,7 @@ multi method request(HTTP::Request $request) {
                 X::HTTP::Response.new(:rc('Max redirects exceeded')).throw;
             }
             default {
-                return self.get(~$response.header.field('Location'));
+                return self.request($response.next-request);
             }
         } 
         when /^4/ { X::HTTP::Response.new(:rc($response.status-line)).throw }
@@ -215,6 +214,32 @@ multi method request(HTTP::Request $request) {
     # save cookies
     $.cookies.extract-cookies($response);
     return $response;
+}
+
+method process-request(HTTP::Request $request --> HTTP::Request ) {
+    # add cookies to the request
+    $.cookies.add-cookie-header($request) if $.cookies.cookies.elems;
+
+    # set the useragent
+    $request.header.field(User-Agent => $.useragent) if $.useragent.defined;
+
+    # use HTTP Auth
+    $request.header.field( Authorization => self.encode-auth) if self.has-auth;
+    $request;
+}
+
+method get-connection(HTTP::Request $request --> IO::Socket) {
+    my $port = $request.port;
+    my $host = $request.host;
+    my $conn;
+    if $request.uri.scheme eq 'https' {
+        die "Please install IO::Socket::SSL in order to fetch https sites" if ::('IO::Socket::SSL') ~~ Failure;
+        $conn = ::('IO::Socket::SSL').new(:host($host), :port($port // 443), :timeout($.timeout))
+    }
+    else {
+        $conn = IO::Socket::INET.new(:host($host), :port($port // 80), :timeout($.timeout));
+    }
+    $conn;
 }
 
 # :simple

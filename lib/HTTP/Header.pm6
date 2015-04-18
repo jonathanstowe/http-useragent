@@ -91,6 +91,16 @@ method header-field-names() {
     @.fields>>.name;
 }
 
+# Apply the fields that *don't* exist in the current header from
+# the supplied header.
+method merge(HTTP::Header $header) {
+   for $header.fields -> $field {
+      if !self.field($field.name) {
+         @.fields.push($field);
+      }
+   }
+}
+
 # remove all fields
 method clear() {
     @.fields = ();

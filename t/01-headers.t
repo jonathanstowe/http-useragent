@@ -2,7 +2,7 @@ use Test;
 
 use HTTP::Header;
 
-plan 13;
+plan 14;
 
 # new
 my $h = HTTP::Header.new(a => "A", b => "B");
@@ -42,3 +42,16 @@ ok not $h.field('a'), 'remove-field 1/1';
 # clear
 $h.clear;
 ok not $h.field('b'), 'clear 1/1';
+
+subtest {
+   my $h1 = HTTP::Header.new;
+   my $h2 = HTTP::Header.new(a => 'b');
+
+   lives_ok { $h1.merge($h2)} , "merge";
+   is ~$h1.field('a'), 'b', "and got the new field in the first header";
+
+   $h2 = HTTP::Header.new(a => 'c');
+   lives_ok { $h1.merge($h2)} , "merge with same field name";
+   is ~$h1.field('a'), 'b', "field in the first header is unchanged";
+
+}, "merge";

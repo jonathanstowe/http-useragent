@@ -3,7 +3,7 @@ use HTTP::UserAgent;
 use HTTP::UserAgent::Common;
 use Test;
 
-plan 8;
+plan 10;
 
 # new
 my $ua = HTTP::UserAgent.new;
@@ -27,3 +27,28 @@ ok $response.is-success, 'get 3/3';
 
 # non-ascii encodings (github issue #35)
 lives_ok { HTTP::UserAgent.new.get('http://www.baidu.com') }, 'Lived through gb2312 encoding';
+
+subtest {
+   my $ua = HTTP::UserAgent.new;
+   my $req = HTTP::Request.new(GET => 'http://example.com');
+   dies_ok { $ua.get-connection }, "get-connection no request";
+   ok my $conn = $ua.get-connection($req), "get-connection with request"; 
+   ok $conn.does(IO::Socket), "connection does IO::Socket";
+   is $conn.host, "example.com", "got the right host";
+   is $conn.port, 80, "got the right port";
+   $req = HTTP::Request.new(GET => 'http://example.com:443');
+   ok $conn = $ua.get-connection($req), "get-connection with request (non-default port"; 
+   is $conn.host, "example.com", "got the right host";
+   is $conn.port, 443, "got the right port";
+
+}, "get-connection";
+
+subtest {
+   my $ua = HTTP::UserAgent.new;
+   $ua.auth('foo','bar');
+   my $req = HTTP::Request.new(GET => 'http://example.com');
+   ok !$req.header.field('Authorization'), "got no authorization header";
+   ok $ua.process-request($req), "process request";
+   ok $req.header.field('Authorization'), "got an auth header now";
+   is ~$req.header.field('Authorization'), $ua.encode-auth, "and it is the right value";
+}, "process-request";

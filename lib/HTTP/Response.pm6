@@ -1,10 +1,12 @@
 use HTTP::Message;
 use HTTP::Status;
+use HTTP::Request;
 
 class HTTP::Response is HTTP::Message;
 
 has $.status-line is rw;
 has $.code is rw;
+has HTTP::Request $.request is rw;
 
 my $CRLF = "\r\n";
 
@@ -23,7 +25,7 @@ method is-success {
 }
 
 method is-chunked {
-   return self.header.field('Transfer-Encoding') &&
+    return self.header.field('Transfer-Encoding') &&
           self.header.field('Transfer-Encoding') eq 'chunked' ?? True !! False; 
 }
 
@@ -31,6 +33,31 @@ method set-code(Int $code) {
     $!code = $code;
     $!status-line = $code ~ " " ~ get_http_status_msg($code);
 }
+
+# create a clone of the original request with the URI of the
+# Location header if there is one.
+method next-request(--> HTTP::Request) {
+    my HTTP::Request $request;
+    if $!request.defined {
+        if self.location -> $location {
+            $request = $!request.clone;
+            $request.uri($location);
+        }
+    }
+    $request;
+}
+
+method location(--> Str ) {
+    my Str $location;
+
+    if self.header.field('Location') -> $v {
+       $location = $v.values[0];
+    }
+   
+    $location;
+}
+
+
 
 method Str {
     my $s = $.protocol ~ " " ~ $!status-line;

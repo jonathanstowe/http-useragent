@@ -91,10 +91,43 @@ multi method get(Str $uri is copy ) {
 }
 
 multi method request(HTTP::Request $request --> HTTP::Response) {
-    my HTTP::Response $response;
 
 
     self.process-request($request);
+
+    my HTTP::Response $response = self.make-request($request);
+
+    X::HTTP::Response.new(:rc('No response')).throw unless $response;
+    
+    # Is there a better way to save history without saving content?
+    # Or should content be optionally cached? (useful for serving 304
+    # Not Modified)
+    my $response-copy = $response.clone();
+    $response-copy.content = $response.content.WHAT;
+    @.history.push($response-copy);
+
+    given $response.code {
+        when /^3/ { 
+            when $.max-redirects < +@.history
+            && all(@.history.reverse[0..$.max-redirects]>>.code)  {
+                X::HTTP::Response.new(:rc('Max redirects exceeded')).throw;
+            }
+            default {
+                return self.request($response.next-request);
+            }
+        } 
+        when /^4/ { X::HTTP::Response.new(:rc($response.status-line)).throw }
+        when /^5/ { X::HTTP::Server.new(:rc($response.status-line)).throw }
+    }        
+
+    # save cookies
+    $.cookies.extract-cookies($response);
+    return $response;
+}
+
+# This does the bulk of the work
+method make-request(HTTP::Request $request --> HTTP::Response ) {
+    my HTTP::Response $response;
 
     my $conn = self.get-connection($request);
 
@@ -188,33 +221,7 @@ multi method request(HTTP::Request $request --> HTTP::Response) {
         $response.content = $content andthen $response.content = $response.decoded-content;
     }
     $conn.close;
-    
-    X::HTTP::Response.new(:rc('No response')).throw unless $response;
-    
-    # Is there a better way to save history without saving content?
-    # Or should content be optionally cached? (useful for serving 304
-    # Not Modified)
-    my $response-copy = $response.clone();
-    $response-copy.content = $response.content.WHAT;
-    @.history.push($response-copy);
-
-    given $response.code {
-        when /^3/ { 
-            when $.max-redirects < +@.history
-            && all(@.history.reverse[0..$.max-redirects]>>.code)  {
-                X::HTTP::Response.new(:rc('Max redirects exceeded')).throw;
-            }
-            default {
-                return self.request($response.next-request);
-            }
-        } 
-        when /^4/ { X::HTTP::Response.new(:rc($response.status-line)).throw }
-        when /^5/ { X::HTTP::Server.new(:rc($response.status-line)).throw }
-    }        
-
-    # save cookies
-    $.cookies.extract-cookies($response);
-    return $response;
+    $response; 
 }
 
 method process-request(HTTP::Request $request --> HTTP::Request ) {

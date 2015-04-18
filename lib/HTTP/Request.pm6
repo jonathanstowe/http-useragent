@@ -7,7 +7,7 @@ class HTTP::Request is HTTP::Message;
 has $.method is rw;
 has $.url is rw;
 has $.file is rw;
-has $.uri is rw;
+has $.uri is rw handles <host port>;
 
 my $CRLF = "\r\n";
 

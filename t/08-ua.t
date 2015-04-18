@@ -51,4 +51,12 @@ subtest {
    ok $ua.process-request($req), "process request";
    ok $req.header.field('Authorization'), "got an auth header now";
    is ~$req.header.field('Authorization'), $ua.encode-auth, "and it is the right value";
+
+   $ua = HTTP::UserAgent.new;
+   $ua.default-header = HTTP::Header.new(Accept => 'application/json', X-Foo => 'foo');
+   $req = HTTP::Request.new(GET => 'http://example.com', Accept => 'text/plain');
+   ok $ua.process-request($req), "process request with some default header";
+   ok $req.header.field('X-Foo'), "got an X-Foo header";
+   is ~$req.header.field('X-Foo'), 'foo', "and it is the right value";
+   is ~$req.header.field('Accept'), 'text/plain', "and the existing header is unchanged";
 }, "process-request";

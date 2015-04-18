@@ -39,6 +39,7 @@ has $.auth_login;
 has $.auth_password;
 has Int $.max-redirects is rw;
 has @.history;
+has HTTP::Header $.default-header is rw;
 
 # Helper method which implements the same logic as Str.split() but for Bufs.
 multi _split_buf(Str $delimiter, Blob $input, $limit = Inf --> List) {
@@ -225,6 +226,10 @@ method process-request(HTTP::Request $request --> HTTP::Request ) {
 
     # use HTTP Auth
     $request.header.field( Authorization => self.encode-auth) if self.has-auth;
+
+    if $!default-header.defined {
+       $request.header.merge($!default-header);
+    }
     $request;
 }
 

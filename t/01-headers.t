@@ -47,11 +47,11 @@ subtest {
    my $h1 = HTTP::Header.new;
    my $h2 = HTTP::Header.new(a => 'b');
 
-   lives_ok { $h1.merge($h2)} , "merge";
+   lives-ok { $h1.merge($h2)} , "merge";
    is ~$h1.field('a'), 'b', "and got the new field in the first header";
 
    $h2 = HTTP::Header.new(a => 'c');
-   lives_ok { $h1.merge($h2)} , "merge with same field name";
+   lives-ok { $h1.merge($h2)} , "merge with same field name";
    is ~$h1.field('a'), 'b', "field in the first header is unchanged";
 
 }, "merge";

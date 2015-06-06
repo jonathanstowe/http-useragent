@@ -27,12 +27,12 @@ ok $response.is-success, 'get 3/3';
 
 # non-ascii encodings (github issue #35)
 
-lives_ok { HTTP::UserAgent.new.get('http://www.baidu.com') }, 'Lived through gb2312 encoding';
+lives-ok { HTTP::UserAgent.new.get('http://www.baidu.com') }, 'Lived through gb2312 encoding';
 
 subtest {
    my $ua = HTTP::UserAgent.new;
    my $req = HTTP::Request.new(GET => 'http://example.com');
-   dies_ok { $ua.get-connection }, "get-connection no request";
+   dies-ok { $ua.get-connection }, "get-connection no request";
    ok my $conn = $ua.get-connection($req), "get-connection with request"; 
    ok $conn.does(IO::Socket), "connection does IO::Socket";
    is $conn.host, "example.com", "got the right host";

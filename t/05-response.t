@@ -60,7 +60,7 @@ subtest {
    $r.request = $req;
    ok my $nr = $r.next-request, "next-request - request defined";
    ok $nr.defined, "and the request is defined";
-   isa_ok $nr, HTTP::Request, 'next-request returns an HTTP::Request';
+   isa-ok $nr, HTTP::Request, 'next-request returns an HTTP::Request';
    is $nr.url, 'http://example.com', "the new request url is correct";
    is ~$nr.header.field('Accept'), 'application/json', "and it has the header field from the original request";
 }, "next-request";

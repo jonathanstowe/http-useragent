@@ -2,7 +2,7 @@ use HTTP::Message;
 use HTTP::Status;
 use HTTP::Request;
 
-class HTTP::Response is HTTP::Message;
+unit class HTTP::Response is HTTP::Message;
 
 has $.status-line is rw;
 has $.code is rw;

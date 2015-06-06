@@ -41,7 +41,11 @@ my class HTTP::Cookies::Actions {
 }
 
 method extract-cookies(HTTP::Response $response) {
-    self.set-cookie($_) for $response.field('Set-Cookie').flatmap({ "Set-Cookie: $_" });
+    for $response.field('Set-Cookie') -> $cookie {
+        if $cookie {
+            self.set-cookie( "Set-Cookie: $cookie" ) ;
+        }
+    }
     self.save if $.autosave;
 }
 
